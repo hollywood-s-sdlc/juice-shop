@@ -1,4 +1,4 @@
-name: SCA - Software Composition Analysis
+name: "[SECURITY] SCA - Software Composition Analysis"
 
 on:
   workflow_dispatch: # Manual workflow call

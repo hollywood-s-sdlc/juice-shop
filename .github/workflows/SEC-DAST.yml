@@ -1,4 +1,4 @@
-name: DAST - Dynamic Analysis
+name: "[SECURITY] DAST - Dynamic Analysis"
 
 on:
   workflow_dispatch: # Manual workflow call
