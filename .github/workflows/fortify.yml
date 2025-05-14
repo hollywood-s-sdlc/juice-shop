@@ -1,0 +1,48 @@
+# DOCS: https://github.com/fortify/github-action
+name: Fortify AST Scan
+
+# Manual workflow call
+on:
+  workflow_dispatch:
+
+#on:
+#  push:
+#    branches: [ "main" ]
+#  pull_request:
+#    branches: [ "main" ]
+
+jobs:
+  Fortify-AST-Scan:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      # Check out source code    
+      - name: Check out source code
+        uses: actions/checkout@v4  
+      
+
+      # Java is required to run the various Fortify utilities. Ensuring proper version is installed on the runner.
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: 'temurin'
+      
+      # Perform Fortify on Demand SAST + SCA scan and import SAST results into GitHub code scanning alerts
+      - name: Run Fortify on Demand SAST & SCA Scan
+        uses: fortify/github-action@v1
+        with:
+          sast-scan: true
+          debricked-sca-scan: true
+        env:
+          FOD_URL: https://ams.fortify.com
+          FOD_TENANT: ${{secrets.FORTIFY_TENANT}}
+          FOD_USER: ${{secrets.FORTIFY_USER}}
+          FOD_PASSWORD: ${{secrets.FORTIFY_TOKEN}}
+          FOD_RELEASE:  ${{secrets.FORTIFY_RELEASE_ID}}
+          EXTRA_PACKAGE_OPTS: -oss
+          DO_EXPORT: true

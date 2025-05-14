@@ -1,0 +1,240 @@
+name: SCA - Software Composition Analysis
+
+on:
+  workflow_dispatch: # Manual workflow call
+  # push:
+  #   branches: [ dev ]
+  #   paths-ignore:
+  #     - '.github/workflows/playground.yml'
+  # pull_request:
+  #   branches: [ dev ]
+  # schedule:
+  #   - cron: '0 0 * * 6' # Runs at 00:00, every Saturday.
+
+env:
+  DEBUG: false
+  SECURITY-GATE-ENABLE: false
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+permissions:
+  security-events: write
+  id-token: write
+  actions: read
+  attestations: read
+  checks: read
+  contents: read
+  deployments: read
+  issues: read
+  discussions: read
+  packages: read
+  pages: read
+  pull-requests: read
+  statuses: read
+
+jobs:
+  sca-health-check:
+    name: Health Check SCA
+    runs-on: ubuntu-latest
+    steps:
+      - name: "App Authentication"
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      
+      - name: "[RESULT] Verify if Dependabot is available"
+        env: 
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # Dependabot Health Check
+          GREEN='\033[0;32m'
+          RED='\033[0;31m'
+          NC='\033[0m'
+
+
+          echo "   _____ _________        ______                            __      __          __  _ ";
+          echo "  / ___// ____/   |     _/_/ __ \___  ____  ___  ____  ____/ /___ _/ /_  ____  / /_| |";
+          echo "  \__ \/ /   / /| |    / // / / / _ \/ __ \/ _ \/ __ \/ __  / __ \`/ __ \/ __ \/ __// /";
+          echo " ___/ / /___/ ___ |   / // /_/ /  __/ /_/ /  __/ / / / /_/ / /_/ / /_/ / /_/ / /_ / / ";
+          echo "/____/\____/_/  |_|  / //_____/\___/ .___/\___/_/ /_/\__,_/\__,_/_.___/\____/\__//_/  ";
+          echo "                     |_|          /_/                                          /_/    ";          
+
+          # Call GH API
+          response=$(gh api -i "/repos/${{ github.repository }}/dependabot/alerts" -H "Accept: application/vnd.github+json")
+          if [[ "${{ env.DEBUG }}" == 'true' ]]; then
+            echo "[DEBUG] $response"
+          fi
+
+          # Grab response body
+          BODY=$(echo "$response" | tail -n1)
+
+          # Parse response header
+          shopt -s extglob # Required to trim whitespace
+          while IFS=':' read key value; do
+              # trim whitespace in "value"
+              value=${value##+([[:space:]])}; value=${value%%+([[:space:]])}
+
+              case "$key" in
+                  Server) SERVER="$value"
+                    ;;
+                  HTTP*) read PROTO STATUS MSG <<< "$key{$value:+:$value}"
+                    ;;
+              esac
+          done < <(echo "$response" | sed '$d')
+
+          echo "--------------------"
+          echo "Response Code"
+
+          if [[ "${{ env.DEBUG }}" == 'true' ]]; then
+            echo "[DEBUG] $STATUS"
+          fi
+
+          if [[ "$STATUS" -ne 200 ]]; then
+            echo -e "${RED}Error: ${NC}Dependabot is not active or not configured!"
+            exit 1
+          else
+            echo -e "${GREEN}PASSED\n"
+          fi
+
+          echo "--------------------"
+          echo "Health check successful: Dependabot is available."
+          echo -e "${GREEN}SUCCESS"
+  
+  sca-analyze:
+    name: Dependabot Scan
+    needs: sca-health-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Dependabot
+        run: |
+          # Running Dependabot Scan
+
+          echo "   _____ _________        ______                            __      __          __  _ ";
+          echo "  / ___// ____/   |     _/_/ __ \___  ____  ___  ____  ____/ /___ _/ /_  ____  / /_| |";
+          echo "  \__ \/ /   / /| |    / // / / / _ \/ __ \/ _ \/ __ \/ __  / __ \`/ __ \/ __ \/ __// /";
+          echo " ___/ / /___/ ___ |   / // /_/ /  __/ /_/ /  __/ / / / /_/ / /_/ / /_/ / /_/ / /_ / / ";
+          echo "/____/\____/_/  |_|  / //_____/\___/ .___/\___/_/ /_/\__,_/\__,_/_.___/\____/\__//_/  ";
+          echo "                     |_|          /_/                                          /_/    ";
+
+  sca-summarize-results:
+    name: List Vulnerabilities
+    needs: sca-analyze
+    runs-on: ubuntu-latest
+    steps:
+      - name: "App Authentication"
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: "[RESULT] Vulnerabilities Summary"
+        env: 
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # Vulnerabilities Summary
+
+          echo "   _____ _________        ______                            __      __          __  _ ";
+          echo "  / ___// ____/   |     _/_/ __ \___  ____  ___  ____  ____/ /___ _/ /_  ____  / /_| |";
+          echo "  \__ \/ /   / /| |    / // / / / _ \/ __ \/ _ \/ __ \/ __  / __ \`/ __ \/ __ \/ __// /";
+          echo " ___/ / /___/ ___ |   / // /_/ /  __/ /_/ /  __/ / / / /_/ / /_/ / /_/ / /_/ / /_ / / ";
+          echo "/____/\____/_/  |_|  / //_____/\___/ .___/\___/_/ /_/\__,_/\__,_/_.___/\____/\__//_/  ";
+          echo "                     |_|          /_/                                          /_/    ";
+
+          echo "# Vulnerabilites Summary" >> $GITHUB_STEP_SUMMARY
+
+          severity_list=( critical high medium low )
+          for severity in "${severity_list[@]}"; do
+            response=$(gh api -H "Accept: application/vnd.github+json" \
+              "/repos/${{ github.repository }}/dependabot/alerts?state=open&severity=$severity&direction=asc"
+            )
+            if [[ "${{ env.DEBUG }}" == 'true' ]]; then
+              echo "[DEBUG] $response"
+            fi
+
+            echo "--------------------"
+            echo "${severity^}"
+            
+            quantity=$(echo $response | jq 'length')
+
+            echo "TOTAL: $quantity $severity alerts."
+            echo "## ${severity^} ($quantity alerts)" >> $GITHUB_STEP_SUMMARY
+
+            if [[ "$quantity" -gt 0 ]]; then
+              echo "| Alert | Description | Location | Links |" >> $GITHUB_STEP_SUMMARY
+              echo "| ----- | ----------- | -------- | ----- |" >> $GITHUB_STEP_SUMMARY
+
+              i=0
+              while item=$(echo "$response" | jq -c ".[$i]"); do
+                if [[ "$item" == "null" ]]; then
+                  break
+                fi
+
+                alert_url=$(echo "$item" | jq -r '.html_url')
+                alert_number=$(echo "$item" | jq -r '.number')
+                description=$(echo "$item" | jq -r '.security_advisory.summary')
+                package=$(echo "$item" | jq -r '"\(.security_vulnerability.package.ecosystem)/\(.security_vulnerability.package.name)"')
+
+                echo "$alert_number | $description | $alert_url"
+                echo "| $alert_number | $description | $package | [Vulnerability Details]($alert_url) |" >> $GITHUB_STEP_SUMMARY
+
+                i=$((i+1))
+              done
+            fi
+            
+          done
+
+  sca-security-gate:
+    name: Security Gate
+    needs: sca-analyze
+    runs-on: ubuntu-latest
+    steps:
+      - name: "App Authentication"
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        
+      - name: "[RESULT] Security Gate"
+        env: 
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # Security Gate
+          GREEN='\033[0;32m'
+          ORANGE='\033[0;33m'
+          RED='\033[0;31m'
+          NC='\033[0m'
+
+          echo "   _____ _________        ______                            __      __          __  _ ";
+          echo "  / ___// ____/   |     _/_/ __ \___  ____  ___  ____  ____/ /___ _/ /_  ____  / /_| |";
+          echo "  \__ \/ /   / /| |    / // / / / _ \/ __ \/ _ \/ __ \/ __  / __ \`/ __ \/ __ \/ __// /";
+          echo " ___/ / /___/ ___ |   / // /_/ /  __/ /_/ /  __/ / / / /_/ / /_/ / /_/ / /_/ / /_ / / ";
+          echo "/____/\____/_/  |_|  / //_____/\___/ .___/\___/_/ /_/\__,_/\__,_/_.___/\____/\__//_/  ";
+          echo "                     |_|          /_/                                          /_/    ";
+
+          # Check open alerts grouped by severity
+          severity_list=( critical high )
+
+          for severity in "${severity_list[@]}"; do
+            response=$(gh api -H "Accept: application/vnd.github+json" \
+              "/repos/${{ github.repository }}/dependabot/alerts?state=open&severity=$severity"
+            )
+            if [[ "${{ env.DEBUG }}" == 'true' ]]; then
+              echo "[DEBUG] $response"
+            fi
+
+            quantity=$(echo $response | jq 'length')
+            if [[ $quantity -gt 0 ]]; then
+              echo -e "${RED}[ERROR] ${NC}Found open alerts of $severity severity."
+              if [[ "${{ env.SECURITY-GATE-ENABLE }}" == 'true' ]]; then
+                exit 1
+              else
+                echo -e "${ORANGE}[WARN] ${NC}SECURITY-GATE-ENABLE set to false, proceeding."
+              fi
+              
+            else
+              echo  -e "${GREEN}${severity^^} PASSED\n"
+            fi
+          done

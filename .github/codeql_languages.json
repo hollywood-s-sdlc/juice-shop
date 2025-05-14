@@ -1,0 +1,7 @@
+{
+  "codeql_languages": [
+    "actions",
+    "javascript",
+    "python"
+  ]
+}
