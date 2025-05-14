@@ -1,4 +1,4 @@
-name: SAST - Static Analysis
+name: "[SECURITY] SAST - Static Analysis"
 
 on:
   workflow_dispatch: # Manual workflow call
