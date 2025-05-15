@@ -36,6 +36,11 @@ jobs:
     name: Health Check SCA
     runs-on: ubuntu-latest
     steps:
+      - name: Debug Variables
+        run: |
+          echo "APP_ID: ${{ vars.APP_ID }}"
+          echo "PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}" 
+      
       - name: "App Authentication"
         uses: actions/create-github-app-token@v2
         id: app-token
