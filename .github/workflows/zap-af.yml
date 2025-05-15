@@ -1,0 +1,44 @@
+name: DAST - ZAP Automation Framework
+
+# DOCS
+# https://github.com/marketplace/actions/zap-automation-framework-scan
+# https://gist.github.com/hexrom/c35a5238c144c408c16ee17adb839ba2
+# https://codific.com/integrate-owasp-zap-and-gitlab/
+
+on:
+  workflow_dispatch: # Manual workflow call
+  # push:
+  #     branches: [ master ]
+  # pull_request:
+  #     branches: [ master ]
+  # schedule:
+  #     - cron: '0 0 * * 6' # Runs at 00:00, every Saturday.
+
+env:
+  SECURITY-GATE-ENABLE: true
+  TARGET_URL: "https://${{ vars.OPENQUIZ_URL }}"
+  USER_NAME: ${{ secrets.DAST_USER }}
+  USER_PASSWORD: ${{ secrets.DAST_PAT }}
+
+permissions:
+  security-events: write
+  issues: write
+  contents: read
+
+jobs:
+  dast-analyze:
+    name: DAST Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: "[RESULT] ZAP Full Scan"
+        uses: zaproxy/action-af@v0.2.0
+        with:
+          # The file system path or URL to the Automation Framework plan to run.
+          plan: '.github/workflows/zap/plan.yml'
+          # The Docker file to be executed
+          docker_name: ghcr.io/zaproxy/zaproxy:stable
+          # The names of the environment variables that should be passed to the Docker container to use in the plan
+          docker_env_vars: |
+            TARGET_URL
+            USER_NAME
+            USER_PASSWORD
